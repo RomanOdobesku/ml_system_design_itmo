@@ -1,0 +1,25 @@
+[project]
+name = "ml_system_design_itmo"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "RomanOdobesku"},
+]
+dependencies = [
+    "ruff>=0.8.0",
+    "black>=24.10.0",
+    "pre-commit>=4.0.1",
+    "pylint>=3.3.1",
+    "flake8>=7.1.1",
+]
+requires-python = "==3.10.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false
+
+[tool.black]
+line-length = 99
+target-version = ["py310"]
