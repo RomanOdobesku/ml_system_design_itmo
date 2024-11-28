@@ -25,7 +25,7 @@ jobs:
         run: pdm install
 
       - name: Check pylint
-        run: pdm run pylint ./*/*.py
+        run: pdm run pylint ./src
 
       - name: Check ruff
         run: pdm run ruff check .
