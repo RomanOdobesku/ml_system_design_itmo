@@ -1,0 +1,34 @@
+name: Check
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PDM
+        uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: '3.10'
+          cache: true
+
+      - name: Install dependencies
+        run: pdm install
+
+      - name: Check pylint
+        run: pdm run pylint ./src
+
+      - name: Check ruff
+        run: pdm run ruff check .
+
+      - name: Check black
+        run: pdm run black --check .
