@@ -21,6 +21,9 @@ dependencies = [
     "ipywidgets>=8.1.5",
     "polars>=1.20.0",
     "shap>=0.46.0",
+    "dotenv>=0.0.5",
+    "optuna>=4.2.0",
+    "mlflow>=2.20.0",
 ]
 requires-python = "==3.10.15"
 readme = "README.md"
