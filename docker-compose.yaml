@@ -30,18 +30,6 @@ services:
     ports:
       - "5432:5432"
       
-  # pgadmin:
-  #   container_name: pgadmin
-  #   image: dpage/pgadmin4
-  #   restart: always
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-  #   volumes:
-  #      - ./volumes/pgadmin:/var/lib/pgadmin
-  #   ports:
-  #     - "5050:80"
-      
   mlflow:
     restart: always
     build: ./Docker/mlflow_image
@@ -51,7 +39,6 @@ services:
       - "5000:5000"
 
     depends_on:
-      # - pgadmin
       - minio
       - db
     env_file:
@@ -59,5 +46,33 @@ services:
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - MLFLOW_S3_ENDPOINT_URL=http://${MLFLOW_S3_ENDPOINT_URL}
+      - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
     command: mlflow server --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB} --default-artifact-root s3://${S3_BUCKET}/ --host 0.0.0.0
+
+  ml_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ml_service
+    restart: always
+    ports:
+      - "14956:14956"
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+
+  locust:
+    build:
+      context: .
+      dockerfile: Dockerfile.locust
+    container_name: locust
+    depends_on:
+      - ml_service
+    ports:
+      - "8089:8089"
+    # environment:
+    #   # Если нужны дополнительные переменные окружения, добавьте их здесь
+    #   - LOCUST_HOST=http://ml_service:14956

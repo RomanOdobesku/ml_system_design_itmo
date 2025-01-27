@@ -1,0 +1,17 @@
+# Используем базовый образ Python
+FROM python:3.10.15-slim
+
+# Устанавливаем зависимости
+RUN pip install locust
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Копируем файл locustfile.py
+COPY src/locustfile.py /app/locustfile.py
+
+# Открываем порт для веб-интерфейса Locust
+EXPOSE 8089
+
+# Команда запуска Locust
+CMD ["locust", "-f", "locustfile.py", "--host=http://ml_service:14956"]

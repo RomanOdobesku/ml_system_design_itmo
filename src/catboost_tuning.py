@@ -11,26 +11,27 @@ from mlflow.models import infer_signature
 from optuna.integration import CatBoostPruningCallback
 from optuna.samplers import TPESampler
 
+from src.logger import LOGGER
 from src.utils import (
     catboost_calc_metrics,
     get_confusion_matrix,
-    get_good_catboost_params,
 )
 
 
 @click.command()
-@click.argument("train_path", type=click.Path(), default="../data/train.parquet")
-@click.argument("val_path", type=click.Path(), default="../data/val.parquet")
-@click.argument("test_path", type=click.Path(), default="../data/test.parquet")
+@click.argument("train_path", type=click.Path(), default="./data/train.parquet")
+@click.argument("val_path", type=click.Path(), default="./data/val.parquet")
+@click.argument("test_path", type=click.Path(), default="./data/test.parquet")
 @click.argument(
-    "output_model_path", type=click.Path(), default="../models/tuned_catboost.cbm"
+    "output_model_path", type=click.Path(), default="./models/tuned_catboost.cbm"
 )
 def catboost_tuning(
     train_path: str, val_path: str, test_path: str, output_model_path: str
 ):
     """
-    Данная функция служит для тюнинга гиперпараметров CatBoostClassifier, его обучения на лучших параметрах,
-    а также логирования эксперимента в mlflow. Сохраняются графики, относящиеся к optuna, лучшие параметры модели,
+    Данная функция служит для тюнинга гиперпараметров CatBoostClassifier,
+    его обучения на лучших параметрах, а также логирования эксперимента в mlflow.
+    Сохраняются графики, относящиеся к optuna, лучшие параметры модели,
     метрики, а также сама catboost модель. Также модель попадает в mlflow model registry.
 
     :param train_path: путь до тренировочного датафрейма
@@ -38,15 +39,20 @@ def catboost_tuning(
     :param test_path: путь до тестового датафрейма
     :param output_model_path: куда локально сохранить итоговую catboost модель
     """
-    load_dotenv()
+    LOGGER.info("catboost_tuning start")
+    load_dotenv(override=True)
     mlflow.set_experiment("catboost_tuning")
     remote_server_uri = os.getenv("MLFLOW_TRACKING_URI")
     mlflow.set_tracking_uri(remote_server_uri)
 
     with mlflow.start_run():
-        train_df = pd.read_csv(train_path)
-        val_df = pd.read_csv(val_path)
-        test_df = pd.read_csv(test_path)
+        LOGGER.info("Reading val_df")
+        val_df = pd.read_parquet(val_path)
+        LOGGER.info("Reading test_df")
+        test_df = pd.read_parquet(test_path)
+        LOGGER.info("Reading train_df")
+        train_df = pd.read_parquet(train_path)
+        LOGGER.info("Data is ready")
 
         cb_params = {
             "eval_metric": "Logloss",
@@ -56,15 +62,14 @@ def catboost_tuning(
             "grow_policy": "SymmetricTree",
             "boosting_type": "Plain",
             "random_seed": 7575,
-            "iterations": 1000,
+            "iterations": 100,
+            "auto_class_weights": "Balanced",
         }
 
-        train_pool = Pool(
-            train_df.drop("target", axis=1), train_df["target"], text_features=["text"]
-        )
-        val_pool = Pool(
-            val_df.drop("target", axis=1), val_df["target"], text_features=["text"]
-        )
+        LOGGER.info("Creating train pool")
+        train_pool = Pool(train_df.drop("target", axis=1), train_df["target"])
+        LOGGER.info("Creating val pool")
+        val_pool = Pool(val_df.drop("target", axis=1), val_df["target"])
 
         study = optuna.create_study(
             sampler=TPESampler(),
@@ -72,15 +77,26 @@ def catboost_tuning(
             direction="minimize",
         )
 
-        good_cb_params = get_good_catboost_params()
-        for good_params in good_cb_params:
-            study.enqueue_trial(good_params)
+        good_params = {
+            "learning_rate": 0.3364593306729285,
+            "depth": 2,
+            "l2_leaf_reg": 3.3291591295624006,
+            "random_strength": 0.08204035894098327,
+            "bootstrap_type": "Bernoulli",
+            "min_data_in_leaf": 6,
+            "subsample": 0.5062040753051366,
+        }
+
+        study.enqueue_trial(good_params)
 
         objective_fn_partial = partial(
             objective, train_pool=train_pool, val_pool=val_pool
         )
-        study.optimize(objective_fn_partial, n_trials=1000, show_progress_bar=True)
+        LOGGER.info("Start hyperparameters tuning")
+        study.optimize(objective_fn_partial, n_trials=10, show_progress_bar=True)
+        LOGGER.info("Hyperparameters tuning is done")
 
+        LOGGER.info("Creating oprimization history plot")
         plot_optimization_history_fig = optuna.visualization.plot_optimization_history(
             study
         )
@@ -88,15 +104,18 @@ def catboost_tuning(
             plot_optimization_history_fig, "plot_optimization_history.html"
         )
 
+        LOGGER.info("Creating params importance plot")
         plot_param_importances_fig = optuna.visualization.plot_param_importances(study)
         mlflow.log_figure(plot_param_importances_fig, "plot_param_importances.html")
 
+        LOGGER.info("Creating slice plot")
         plot_slice_fig = optuna.visualization.plot_slice(study)
         mlflow.log_figure(plot_slice_fig, "plot_slice.html")
 
         for key, value in study.best_trial.params.items():
             cb_params[key] = value
 
+        LOGGER.info("Train final model")
         catboost_classifier = CatBoostClassifier(**cb_params)
         catboost_classifier.fit(
             train_pool,
@@ -105,29 +124,36 @@ def catboost_tuning(
             early_stopping_rounds=10,
             use_best_model=False,
         )
+        LOGGER.info("Training is done")
 
-        train_preds, train_metrics = catboost_calc_metrics(
+        LOGGER.info("Calculating train metrics")
+        _, train_metrics = catboost_calc_metrics(
             catboost_classifier, train_df.drop("target", axis=1), train_df["target"]
         )
 
-        val_preds, val_metrics = catboost_calc_metrics(
+        LOGGER.info("Calculating val metrics")
+        _, val_metrics = catboost_calc_metrics(
             catboost_classifier, val_df.drop("target", axis=1), val_df["target"]
         )
 
+        LOGGER.info("Calculating test metrics")
         test_preds, test_metrics = catboost_calc_metrics(
             catboost_classifier, test_df.drop("target", axis=1), test_df["target"]
         )
 
+        LOGGER.info("Logging metrics into MLFlow")
         mlflow.log_params(cb_params)
         mlflow.log_metrics(train_metrics)
         mlflow.log_metrics(val_metrics)
         mlflow.log_metrics(test_metrics)
 
+        LOGGER.info("Calculating confusion matrix")
         fig = get_confusion_matrix(test_df["target"], test_preds)
         mlflow.log_figure(fig, "test_confusion_matrix.png")
 
         signature = infer_signature(test_df.drop("target", axis=1), test_preds)
 
+        LOGGER.info("Logging the final model into MLFlow")
         mlflow.catboost.log_model(
             cb_model=catboost_classifier,
             artifact_path="tuned_catboost",
@@ -135,6 +161,7 @@ def catboost_tuning(
             signature=signature,
         )
 
+        LOGGER.info("Saving the final model locally")
         catboost_classifier.save_model(output_model_path)
 
 
@@ -148,8 +175,9 @@ def objective(trial, train_pool, val_pool):
         "boosting_type": "Plain",
         "random_seed": 7575,
         "iterations": 100,
+        "auto_class_weights": "Balanced",
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 5e-1),
-        "depth": trial.suggest_int("depth", 3, 10),
+        "depth": trial.suggest_int("depth", 2, 4),
         "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-2, 5e0),
         "random_strength": trial.suggest_float("random_strength", 0, 2),
         "bootstrap_type": trial.suggest_categorical(
@@ -184,4 +212,4 @@ def objective(trial, train_pool, val_pool):
 
 
 if __name__ == "__main__":
-    catboost_tuning()
+    catboost_tuning()  # pylint: disable=no-value-for-parameter
