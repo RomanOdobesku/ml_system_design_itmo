@@ -8,9 +8,14 @@
 ```bash
 pdm install
 ```
-
 Чтобы установить pre-commit самостоятельно, вы можете воспользоваться следующими командами:
 ```bash
 pdm run pre-commit install
 pdm run pre-commit run --all-files
 ```
+Все сервисы помещены в docker compose, запуск можно произвести с помощью команды:
+```bash
+docker compose up --build
+```
+Для обучения необходимо запустить catboost_tuning.py, модель автоматически загрузится в MLFLow Model Registry.
+Перед запуском не забудьте создать и заполнить .env файл на основе .env_example в корне репозитория
