@@ -168,3 +168,7 @@ data/*.parquet
 models/*.cbm
 
 notebooks/catboost_info
+
+volumes
+
+catboost_info

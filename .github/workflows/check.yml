@@ -30,5 +30,3 @@ jobs:
       - name: Check ruff
         run: pdm run ruff check .
 
-      - name: Check black
-        run: pdm run black --check .
