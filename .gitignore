@@ -164,3 +164,7 @@ cython_debug/
 # Data
 data/*.csv
 data/*.parquet
+
+models/*.cbm
+
+notebooks/catboost_info
